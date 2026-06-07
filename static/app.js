@@ -1,23 +1,10 @@
 let currentPlan = 'wise';
 let pendingAdvicedMove = null;
 let currentBoard = null;
-let highlightedPoints = { from: new Set(), to: new Set() };
+let clickMoveState = null;
+let highlightedPoints = { from: new Set(), to: new Set(), clickable: new Set(), selected: new Set(), target: new Set() };
 
-function parseMovePoints(moveStr) {
-  const from = [], to = [];
-  if (!moveStr || moveStr === '—') return { from, to };
-  moveStr.split(' ').forEach(part => {
-    const [src, dst] = part.split('/');
-    if (src && src.toLowerCase() !== 'bar') { const p = parseInt(src); if (!isNaN(p)) from.push(p); }
-    if (dst && dst.toLowerCase() !== 'off')  { const p = parseInt(dst); if (!isNaN(p)) to.push(p); }
-  });
-  return { from, to };
-}
-
-function clearHighlights() {
-  highlightedPoints = { from: new Set(), to: new Set() };
-}
-
+// ── Plan tabs ──
 document.querySelectorAll('.plan-tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.plan-tab').forEach(t => t.classList.remove('active'));
@@ -26,9 +13,10 @@ document.querySelectorAll('.plan-tab').forEach(tab => {
   });
 });
 
+// ── New game ──
 document.getElementById('new-game-btn').addEventListener('click', async () => {
   const data = await post('/api/new-game', {});
-  clearHighlights();
+  cancelClickMove();
   updateBoard(data.board);
   updateAnalysis(data.analysis);
   clearHistory();
@@ -36,14 +24,24 @@ document.getElementById('new-game-btn').addEventListener('click', async () => {
   document.getElementById('histogram').innerHTML = '<em style="color:#444">Get advice to see outcomes.</em>';
 });
 
-document.getElementById('advise-btn').addEventListener('click', async () => {
+// ── Get advice (also Enter key) ──
+document.getElementById('advise-btn').addEventListener('click', getAdvice);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement.closest('.dice-row')) getAdvice();
+  if (e.key === 'Escape') cancelClickMove();
+});
+
+async function getAdvice() {
   const d1 = parseInt(document.getElementById('die1').value);
   const d2 = parseInt(document.getElementById('die2').value);
   if (!d1 || !d2 || d1 < 1 || d1 > 6 || d2 < 1 || d2 > 6) {
     alert('Enter two dice values (1–6).');
     return;
   }
+  cancelClickMove();
+  setAdvising(true);
   const data = await post('/api/advise', { dice: [d1, d2], plan: currentPlan });
+  setAdvising(false);
   pendingAdvicedMove = data.best_move;
   document.getElementById('best-move-text').textContent = data.best_move || '—';
   document.getElementById('best-move-score').textContent = `Score: ${data.analysis.score}`;
@@ -52,10 +50,19 @@ document.getElementById('advise-btn').addEventListener('click', async () => {
   updateAnalysis(data.analysis);
   renderHistogram(data.histogram);
   const { from, to } = parseMovePoints(data.best_move);
-  highlightedPoints = { from: new Set(from), to: new Set(to) };
+  highlightedPoints.from = new Set(from);
+  highlightedPoints.to = new Set(to);
   if (currentBoard) renderPoints(currentBoard);
-});
+  showClickHint(false);
+}
 
+function setAdvising(on) {
+  document.getElementById('advise-spinner').style.display = on ? 'inline-block' : 'none';
+  document.getElementById('advise-text').textContent = on ? 'Thinking…' : 'Get Advice';
+  document.getElementById('advise-btn').disabled = on;
+}
+
+// ── Take advice ──
 document.getElementById('take-btn').addEventListener('click', async () => {
   if (!pendingAdvicedMove || pendingAdvicedMove === '—') return;
   const data = await post('/api/apply-move', { move: pendingAdvicedMove });
@@ -67,6 +74,7 @@ document.getElementById('take-btn').addEventListener('click', async () => {
   pendingAdvicedMove = null;
 });
 
+// ── Override ──
 document.getElementById('override-btn').addEventListener('click', () => {
   document.getElementById('override-box').classList.toggle('visible');
 });
@@ -84,6 +92,7 @@ document.getElementById('apply-override-btn').addEventListener('click', async ()
   pendingAdvicedMove = null;
 });
 
+// ── Opponent move ──
 document.getElementById('opp-apply-btn').addEventListener('click', async () => {
   const diceStr = document.getElementById('opp-dice').value.trim();
   const move = document.getElementById('opp-move').value.trim();
@@ -91,6 +100,7 @@ document.getElementById('opp-apply-btn').addEventListener('click', async () => {
   const dice = diceStr.split(/\s+/).map(Number).filter(n => n >= 1 && n <= 6);
   const data = await post('/api/opponent-move', { dice, move });
   clearHighlights();
+  cancelClickMove();
   updateBoard(data.board);
   updateAnalysis(data.analysis);
   addHistoryEntry('opp', move, diceStr);
@@ -98,6 +108,111 @@ document.getElementById('opp-apply-btn').addEventListener('click', async () => {
   document.getElementById('opp-move').value = '';
 });
 
+// ── Click-to-move ──
+document.getElementById('top-row').addEventListener('click', handleBoardClick);
+document.getElementById('bot-row').addEventListener('click', handleBoardClick);
+
+async function handleBoardClick(e) {
+  const pointEl = e.target.closest('.point[data-pt]');
+  if (!pointEl) return;
+  const pt = parseInt(pointEl.dataset.pt);
+
+  if (!clickMoveState) {
+    if (!currentBoard || currentBoard.points[pt] <= 0) return;
+    const d1 = parseInt(document.getElementById('die1').value);
+    const d2 = parseInt(document.getElementById('die2').value);
+    if (!d1 || !d2) return;
+    const data = await post('/api/legal-moves', { dice: [d1, d2] });
+    const legalMoves = data.moves.map(m => m.submoves);
+    if (!legalMoves.length) return;
+    clearHighlights();
+    clickMoveState = { legalMoves, remainingMoves: legalMoves, partialMoves: [], step: 0, selectedFrom: null };
+    document.getElementById('advice-result').style.display = 'none';
+    showClickHint(true);
+    selectFromPoint(pt);
+    return;
+  }
+
+  if (clickMoveState.selectedFrom === null) {
+    selectFromPoint(pt);
+  } else {
+    const targets = getValidToPoints(clickMoveState.remainingMoves, clickMoveState.step, clickMoveState.selectedFrom);
+    if (targets.has(pt)) {
+      await completeSubMove(clickMoveState.selectedFrom, pt);
+    } else if (getValidFromPoints(clickMoveState.remainingMoves, clickMoveState.step).has(pt)) {
+      selectFromPoint(pt);
+    } else {
+      cancelClickMove();
+    }
+  }
+}
+
+function getValidFromPoints(moves, step) {
+  return new Set(moves.filter(m => m.length > step).map(m => m[step][0]));
+}
+
+function getValidToPoints(moves, step, fromPt) {
+  return new Set(moves.filter(m => m.length > step && m[step][0] === fromPt).map(m => m[step][1]));
+}
+
+function selectFromPoint(pt) {
+  if (!clickMoveState) return;
+  const validFrom = getValidFromPoints(clickMoveState.remainingMoves, clickMoveState.step);
+  if (!validFrom.has(pt)) { cancelClickMove(); return; }
+  clickMoveState.selectedFrom = pt;
+  const targets = getValidToPoints(clickMoveState.remainingMoves, clickMoveState.step, pt);
+  highlightedPoints.clickable = new Set();
+  highlightedPoints.selected = new Set([pt]);
+  highlightedPoints.target = targets;
+  if (currentBoard) renderPoints(currentBoard);
+}
+
+async function completeSubMove(fromPt, toPt) {
+  clickMoveState.partialMoves.push([fromPt, toPt]);
+  clickMoveState.step++;
+  clickMoveState.remainingMoves = clickMoveState.remainingMoves.filter(m => {
+    if (m.length < clickMoveState.step) return false;
+    for (let i = 0; i < clickMoveState.step; i++) {
+      if (m[i][0] !== clickMoveState.partialMoves[i][0] || m[i][1] !== clickMoveState.partialMoves[i][1]) return false;
+    }
+    return true;
+  });
+
+  const done = clickMoveState.remainingMoves.every(m => m.length <= clickMoveState.step);
+  if (done) {
+    const moveStr = clickMoveState.partialMoves
+      .map(([f, t]) => `${f === 0 ? 'bar' : f}/${t === 0 ? 'off' : t}`)
+      .join(' ');
+    cancelClickMove();
+    const data = await post('/api/apply-move', { move: moveStr });
+    clearHighlights();
+    updateBoard(data.board);
+    updateAnalysis(data.analysis);
+    addHistoryEntry('you', moveStr);
+    showClickHint(false);
+    return;
+  }
+
+  clickMoveState.selectedFrom = null;
+  const fromPts = getValidFromPoints(clickMoveState.remainingMoves, clickMoveState.step);
+  highlightedPoints.selected = new Set();
+  highlightedPoints.target = new Set();
+  highlightedPoints.clickable = fromPts;
+  if (currentBoard) renderPoints(currentBoard);
+}
+
+function cancelClickMove() {
+  clickMoveState = null;
+  showClickHint(false);
+  clearHighlights();
+  if (currentBoard) renderPoints(currentBoard);
+}
+
+function showClickHint(on) {
+  document.getElementById('click-hint').style.display = on ? 'block' : 'none';
+}
+
+// ── Helpers ──
 async function post(url, body) {
   const resp = await fetch(url, {
     method: 'POST',
@@ -105,6 +220,21 @@ async function post(url, body) {
     body: JSON.stringify(body),
   });
   return resp.json();
+}
+
+function parseMovePoints(moveStr) {
+  const from = [], to = [];
+  if (!moveStr || moveStr === '—') return { from, to };
+  moveStr.split(' ').forEach(part => {
+    const [src, dst] = part.split('/');
+    if (src && src.toLowerCase() !== 'bar') { const p = parseInt(src); if (!isNaN(p)) from.push(p); }
+    if (dst && dst.toLowerCase() !== 'off') { const p = parseInt(dst); if (!isNaN(p)) to.push(p); }
+  });
+  return { from, to };
+}
+
+function clearHighlights() {
+  highlightedPoints = { from: new Set(), to: new Set(), clickable: new Set(), selected: new Set(), target: new Set() };
 }
 
 function updateAnalysis(a) {
@@ -124,13 +254,31 @@ function updateBoard(board) {
   renderPoints(board);
   document.getElementById('bar-red').textContent = board.red_bar;
   document.getElementById('bar-white').textContent = board.white_bar;
+  document.getElementById('off-red').textContent = board.red_off;
+  document.getElementById('off-white').textContent = board.white_off;
+
   let redPip = 0, whitePip = 0;
   for (let i = 1; i <= 24; i++) {
     if (board.points[i] > 0) redPip += board.points[i] * i;
     if (board.points[i] < 0) whitePip += (-board.points[i]) * (25 - i);
   }
-  document.getElementById('pip-red').textContent = redPip + board.red_bar * 25;
-  document.getElementById('pip-white').textContent = whitePip + board.white_bar * 25;
+  redPip += board.red_bar * 25;
+  whitePip += board.white_bar * 25;
+  document.getElementById('pip-red').textContent = redPip;
+  document.getElementById('pip-white').textContent = whitePip;
+
+  const delta = whitePip - redPip;
+  const deltaEl = document.getElementById('pip-delta');
+  if (delta > 0) {
+    deltaEl.textContent = `You lead +${delta}`;
+    deltaEl.className = 'pip-delta red-leads';
+  } else if (delta < 0) {
+    deltaEl.textContent = `Behind ${delta}`;
+    deltaEl.className = 'pip-delta white-leads';
+  } else {
+    deltaEl.textContent = 'Even';
+    deltaEl.className = 'pip-delta';
+  }
 }
 
 function renderPoints(board) {
@@ -151,12 +299,25 @@ function renderPoints(board) {
 }
 
 function makePoint(pt, count, rowType, triClass) {
-  const hl = highlightedPoints.from.has(pt) ? 'from' : highlightedPoints.to.has(pt) ? 'to' : null;
+  const hlClass =
+    highlightedPoints.selected.has(pt)  ? 'hl-selected' :
+    highlightedPoints.target.has(pt)    ? 'hl-target' :
+    highlightedPoints.clickable.has(pt) ? 'hl-clickable' :
+    highlightedPoints.from.has(pt)      ? 'highlight-from' :
+    highlightedPoints.to.has(pt)        ? 'highlight-to' : '';
+
   const div = document.createElement('div');
-  div.className = 'point' + (hl ? ` highlight-${hl}` : '');
+  div.className = 'point' + (hlClass ? ` ${hlClass}` : '');
+  div.dataset.pt = pt;
+
   const tri = document.createElement('div');
   tri.className = `point-triangle tri-${triClass}`;
   div.appendChild(tri);
+
+  const ptNum = document.createElement('span');
+  ptNum.className = 'pt-num';
+  ptNum.textContent = pt;
+  div.appendChild(ptNum);
 
   const n = Math.abs(count);
   if (n === 0) return div;
@@ -164,20 +325,20 @@ function makePoint(pt, count, rowType, triClass) {
   const overflow = n > 5;
   const numCheckers = overflow ? 5 : n;
 
-  const badge = () => {
+  const makeBadge = () => {
     const b = document.createElement('div');
     b.className = 'checker-badge';
     b.textContent = n;
     return b;
   };
 
-  if (overflow && rowType === 'bot') div.appendChild(badge());
+  if (overflow && rowType === 'bot') div.appendChild(makeBadge());
   for (let i = 0; i < numCheckers; i++) {
     const c = document.createElement('div');
     c.className = `checker ${color}`;
     div.appendChild(c);
   }
-  if (overflow && rowType === 'top') div.appendChild(badge());
+  if (overflow && rowType === 'top') div.appendChild(makeBadge());
 
   return div;
 }

@@ -42,7 +42,13 @@
 
     <div class="pip-row">
       <span>🔴 You · Pip: <b id="pip-red">—</b></span>
+      <span id="pip-delta" class="pip-delta"></span>
       <span>⚪ Opp · Pip: <b id="pip-white">—</b></span>
+    </div>
+
+    <div class="bearoff-row">
+      <span>🔴 Off: <b id="off-red">0</b>/15</span>
+      <span>⚪ Off: <b id="off-white">0</b>/15</span>
     </div>
 
     <div class="history" id="history-log"><em style="color:#444">Move history will appear here.</em></div>
@@ -70,8 +76,12 @@
       <div class="dice-row">
         <input class="dice-input" id="die1" type="number" min="1" max="6" placeholder="d1">
         <input class="dice-input" id="die2" type="number" min="1" max="6" placeholder="d2">
-        <button class="btn get-advice-btn" id="advise-btn">Get Advice</button>
+        <button class="btn get-advice-btn" id="advise-btn">
+          <span class="spinner" id="advise-spinner" style="display:none"></span>
+          <span id="advise-text">Get Advice</span>
+        </button>
       </div>
+      <div class="click-hint" id="click-hint" style="display:none">Click a checker to move it</div>
       <div id="advice-result" style="display:none;margin-top:10px;">
         <div class="best-move-box">
           <div class="move-notation" id="best-move-text">—</div>

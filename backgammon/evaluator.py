@@ -40,6 +40,26 @@ def _hit_threat_score(board: Board) -> float:
     threats = sum(1 for b in white_blots for r in red_checkers if 1 <= r - b <= 6)
     return min(threats / 5.0, 1.0)
 
+def _gammon_danger(board: Board) -> float:
+    """Penalty when opponent is bearing off while Red is still far behind."""
+    white_off = board.white_off
+    if white_off < 7:
+        return 0.0
+    red_pip = pip_count(board, 'red')
+    if red_pip < 40:
+        return 0.0
+    return -(white_off / 15.0) * min(red_pip / 120.0, 1.0)
+
+def _gammon_chance(board: Board) -> float:
+    """Bonus when Red is bearing off while opponent is still far behind."""
+    red_off = board.red_off
+    if red_off < 7:
+        return 0.0
+    white_pip = pip_count(board, 'white')
+    if white_pip < 40:
+        return 0.0
+    return (red_off / 15.0) * min(white_pip / 120.0, 1.0)
+
 def evaluate(board: Board, plan: str = 'wise') -> float:
     w = PLAN_WEIGHTS[plan]
     score = (
@@ -47,7 +67,8 @@ def evaluate(board: Board, plan: str = 'wise') -> float:
         w['blot']  * _blot_score(board) +
         w['prime'] * _prime_score(board) +
         w['home']  * _home_score(board) +
-        w['hit']   * _hit_threat_score(board)
+        w['hit']   * _hit_threat_score(board) +
+        0.15 * (_gammon_danger(board) + _gammon_chance(board))
     )
     return max(-1.0, min(1.0, score))
 

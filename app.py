@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, session, render_template
 from backgammon.board import (
-    opening_board, board_to_dict, board_from_dict, parse_move, apply_move
+    opening_board, board_to_dict, board_from_dict,
+    parse_move, apply_move, generate_moves, format_move
 )
 from backgammon.evaluator import evaluate, win_probability, cube_advice
 from backgammon.advisor import best_move, dice_histogram
@@ -53,9 +54,23 @@ def create_app():
         b = board_from_dict(session['board'])
         move = best_move(b, dice, plan)
         hist = dice_histogram(b, plan)
-        move_str = ' '.join(f'{f}/{"off" if t == 0 else t}' for f, t in move) if move else '—'
+        move_str = format_move(move, 'red') if move else '—'
         new_b = apply_move(b, move, 'red') if move else b
         return jsonify({'best_move': move_str, 'histogram': hist, 'analysis': _analysis(new_b)})
+
+    @app.post('/api/legal-moves')
+    def legal_moves_route():
+        if 'board' not in session:
+            return jsonify({'error': 'No active game'}), 400
+        data = request.get_json()
+        dice = data['dice']
+        b = board_from_dict(session['board'])
+        moves = generate_moves(b, dice, 'red')
+        result = [
+            {'submoves': m, 'notation': format_move(m, 'red')}
+            for m in moves if m
+        ]
+        return jsonify({'moves': result})
 
     @app.post('/api/apply-move')
     def apply_move_route():
@@ -63,7 +78,7 @@ def create_app():
             return jsonify({'error': 'No active game'}), 400
         data = request.get_json()
         b = board_from_dict(session['board'])
-        new_b = apply_move(b, parse_move(data['move']), 'red')
+        new_b = apply_move(b, parse_move(data['move'], 'red'), 'red')
         session['board'] = board_to_dict(new_b)
         history = session.get('history', [])
         history.append({'player': 'you', 'move': data['move']})
@@ -76,7 +91,7 @@ def create_app():
             return jsonify({'error': 'No active game'}), 400
         data = request.get_json()
         b = board_from_dict(session['board'])
-        new_b = apply_move(b, parse_move(data['move']), 'white')
+        new_b = apply_move(b, parse_move(data['move'], 'white'), 'white')
         session['board'] = board_to_dict(new_b)
         history = session.get('history', [])
         history.append({'player': 'opp', 'dice': data.get('dice', []), 'move': data['move']})

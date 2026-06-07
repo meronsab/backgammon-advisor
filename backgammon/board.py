@@ -32,14 +32,26 @@ def pip_count(board: Board, player: str) -> int:
         total = sum((-board.points[i]) * (25 - i) for i in range(1, 25) if board.points[i] < 0)
         return total + board.white_bar * 25
 
-def parse_move(notation: str) -> list:
+def parse_move(notation: str, player: str = 'red') -> list:
+    bar = 0 if player == 'red' else 25
+    off = 0 if player == 'red' else 25
     result = []
     for part in notation.strip().split():
         src, dst = part.split('/')
-        from_pt = 0 if src.lower() == 'bar' else int(src)
-        to_pt = 0 if dst.lower() == 'off' else int(dst)
+        from_pt = bar if src.lower() == 'bar' else int(src)
+        to_pt = off if dst.lower() == 'off' else int(dst)
         result.append((from_pt, to_pt))
     return result
+
+def format_move(move: list, player: str = 'red') -> str:
+    bar = 0 if player == 'red' else 25
+    off = 0 if player == 'red' else 25
+    parts = []
+    for f, t in move:
+        src = 'bar' if f == bar else str(f)
+        dst = 'off' if t == off else str(t)
+        parts.append(f'{src}/{dst}')
+    return ' '.join(parts)
 
 def board_to_dict(board: Board) -> dict:
     return {
@@ -181,8 +193,15 @@ def generate_moves(board: Board, dice: list, player: str) -> list:
     max_len = max(len(m) for m in raw)
     best = [list(m) for m in raw if len(m) == max_len]
     if max_len == 1 and len(dice) == 2:
-        max_die_used = max(abs(m[0][0] - m[0][1]) for m in best if m)
-        best = [m for m in best if m and abs(m[0][0] - m[0][1]) == max_die_used]
+        def _die_used(submove):
+            f, t = submove
+            if f == 0:   return 25 - t   # red bar entry: die = 25 - to_pt
+            if t == 0:   return f         # red bear-off: die >= from_pt (overshoot ok)
+            if f == 25:  return t         # white bar entry: die = to_pt
+            if t == 25:  return 25 - f    # white bear-off
+            return abs(f - t)
+        max_die_used = max(_die_used(m[0]) for m in best if m)
+        best = [m for m in best if m and _die_used(m[0]) == max_die_used]
     seen = set()
     deduped = []
     for m in best:

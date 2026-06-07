@@ -1,4 +1,4 @@
-from backgammon.board import Board, generate_moves, apply_move
+from backgammon.board import Board, generate_moves, apply_move, format_move
 from backgammon.evaluator import evaluate
 
 ALL_DICE_COMBOS = []
@@ -32,7 +32,7 @@ def dice_histogram(board: Board, plan: str = 'wise') -> list:
         move = best_move(board, dice, plan)
         if move:
             score = evaluate(apply_move(board, move, 'red'), plan)
-            move_str = ' '.join(f'{f}/{"off" if t == 0 else t}' for f, t in move)
+            move_str = format_move(move, 'red')
         else:
             score = evaluate(board, plan)
             move_str = '—'
