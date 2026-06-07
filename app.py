@@ -44,12 +44,15 @@ def create_app():
             'history': session.get('history', []),
         })
 
+    def _expand_dice(dice):
+        return dice * 2 if len(dice) == 2 and dice[0] == dice[1] else dice
+
     @app.post('/api/advise')
     def advise():
         if 'board' not in session:
             return jsonify({'error': 'No active game'}), 400
         data = request.get_json()
-        dice = data['dice']
+        dice = _expand_dice(data['dice'])
         plan = data.get('plan', 'wise')
         b = board_from_dict(session['board'])
         move = best_move(b, dice, plan)
@@ -63,11 +66,12 @@ def create_app():
         if 'board' not in session:
             return jsonify({'error': 'No active game'}), 400
         data = request.get_json()
-        dice = data['dice']
+        dice = _expand_dice(data['dice'])
+        player = data.get('player', 'red')
         b = board_from_dict(session['board'])
-        moves = generate_moves(b, dice, 'red')
+        moves = generate_moves(b, dice, player)
         result = [
-            {'submoves': m, 'notation': format_move(m, 'red')}
+            {'submoves': m, 'notation': format_move(m, player)}
             for m in moves if m
         ]
         return jsonify({'moves': result})

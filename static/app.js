@@ -1,5 +1,9 @@
 let currentPlan = 'wise';
 let pendingAdvicedMove = null;
+
+function expandDice(d1, d2) {
+  return d1 === d2 ? [d1, d2, d1, d2] : [d1, d2];
+}
 let currentBoard = null;
 let clickMoveState = null;
 let highlightedPoints = { from: new Set(), to: new Set(), clickable: new Set(), selected: new Set(), target: new Set() };
@@ -40,7 +44,7 @@ async function getAdvice() {
   }
   cancelClickMove();
   setAdvising(true);
-  const data = await post('/api/advise', { dice: [d1, d2], plan: currentPlan });
+  const data = await post('/api/advise', { dice: expandDice(d1, d2), plan: currentPlan });
   setAdvising(false);
   pendingAdvicedMove = data.best_move;
   document.getElementById('best-move-text').textContent = data.best_move || '—';
@@ -116,20 +120,41 @@ async function handleBoardClick(e) {
   const pointEl = e.target.closest('.point[data-pt]');
   if (!pointEl) return;
   const pt = parseInt(pointEl.dataset.pt);
+  if (!currentBoard) return;
+
+  const isRedChecker   = currentBoard.points[pt] > 0;
+  const isWhiteChecker = currentBoard.points[pt] < 0;
 
   if (!clickMoveState) {
-    if (!currentBoard || currentBoard.points[pt] <= 0) return;
-    const d1 = parseInt(document.getElementById('die1').value);
-    const d2 = parseInt(document.getElementById('die2').value);
-    if (!d1 || !d2) return;
-    const data = await post('/api/legal-moves', { dice: [d1, d2] });
-    const legalMoves = data.moves.map(m => m.submoves);
-    if (!legalMoves.length) return;
-    clearHighlights();
-    clickMoveState = { legalMoves, remainingMoves: legalMoves, partialMoves: [], step: 0, selectedFrom: null };
-    document.getElementById('advice-result').style.display = 'none';
-    showClickHint(true);
-    selectFromPoint(pt);
+    // Start red click-to-move
+    if (isRedChecker) {
+      const d1 = parseInt(document.getElementById('die1').value);
+      const d2 = parseInt(document.getElementById('die2').value);
+      if (!d1 || !d2) return;
+      const data = await post('/api/legal-moves', { dice: expandDice(d1, d2), player: 'red' });
+      const legalMoves = data.moves.map(m => m.submoves);
+      if (!legalMoves.length) return;
+      clearHighlights();
+      clickMoveState = { player: 'red', legalMoves, remainingMoves: legalMoves, partialMoves: [], step: 0, selectedFrom: null };
+      document.getElementById('advice-result').style.display = 'none';
+      showClickHint(true);
+      selectFromPoint(pt);
+      return;
+    }
+    // Start white (opponent) click-to-move
+    if (isWhiteChecker) {
+      const diceStr = document.getElementById('opp-dice').value.trim();
+      const oppDice = diceStr.split(/\s+/).map(Number).filter(n => n >= 1 && n <= 6);
+      if (oppDice.length < 2) return;
+      const data = await post('/api/legal-moves', { dice: expandDice(oppDice[0], oppDice[1]), player: 'white' });
+      const legalMoves = data.moves.map(m => m.submoves);
+      if (!legalMoves.length) return;
+      clearHighlights();
+      clickMoveState = { player: 'white', legalMoves, remainingMoves: legalMoves, partialMoves: [], step: 0, selectedFrom: null };
+      showClickHint(true);
+      selectFromPoint(pt);
+      return;
+    }
     return;
   }
 
@@ -180,15 +205,31 @@ async function completeSubMove(fromPt, toPt) {
 
   const done = clickMoveState.remainingMoves.every(m => m.length <= clickMoveState.step);
   if (done) {
+    const player = clickMoveState.player;
+    const bar = player === 'red' ? 0 : 25;
+    const off = player === 'red' ? 0 : 25;
     const moveStr = clickMoveState.partialMoves
-      .map(([f, t]) => `${f === 0 ? 'bar' : f}/${t === 0 ? 'off' : t}`)
+      .map(([f, t]) => `${f === bar ? 'bar' : f}/${t === off ? 'off' : t}`)
       .join(' ');
     cancelClickMove();
-    const data = await post('/api/apply-move', { move: moveStr });
-    clearHighlights();
-    updateBoard(data.board);
-    updateAnalysis(data.analysis);
-    addHistoryEntry('you', moveStr);
+    let data;
+    if (player === 'red') {
+      data = await post('/api/apply-move', { move: moveStr });
+      clearHighlights();
+      updateBoard(data.board);
+      updateAnalysis(data.analysis);
+      addHistoryEntry('you', moveStr);
+    } else {
+      const diceStr = document.getElementById('opp-dice').value.trim();
+      const oppDice = diceStr.split(/\s+/).map(Number).filter(n => n >= 1 && n <= 6);
+      data = await post('/api/opponent-move', { dice: oppDice, move: moveStr });
+      clearHighlights();
+      updateBoard(data.board);
+      updateAnalysis(data.analysis);
+      addHistoryEntry('opp', moveStr, diceStr);
+      document.getElementById('opp-dice').value = '';
+      document.getElementById('opp-move').value = '';
+    }
     showClickHint(false);
     return;
   }
