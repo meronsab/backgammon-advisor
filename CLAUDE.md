@@ -1,5 +1,7 @@
 # Backgammon Advisor
 
+Do not use any superpowers skills unless explicitly asked.
+
 Flask web app that advises the best move in backgammon using one-ply lookahead and heuristic evaluation.
 
 ## Running locally
