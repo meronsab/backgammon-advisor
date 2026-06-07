@@ -29,10 +29,22 @@ def _prime_score(board: Board) -> float:
         return best
     return (longest_prime(board.points, True) - longest_prime(board.points, False)) / 6.0
 
+# Weighted value of Red making each point (2+ checkers).
+# Priority order: 5, 4, 7(bar), 20/21/18(anchors), 3, 2, 9, then others.
+_RED_POINT_WEIGHTS = {
+    5: 1.00, 4: 0.80, 7: 0.72,
+    20: 0.70, 21: 0.65, 18: 0.62,
+    3: 0.55, 2: 0.45, 9: 0.40,
+    6: 0.35, 8: 0.28, 19: 0.48, 22: 0.42, 23: 0.32, 24: 0.20, 1: 0.22,
+    10: 0.20, 11: 0.16, 12: 0.12, 13: 0.10,
+}
+_WHITE_POINT_WEIGHTS = {25 - p: w for p, w in _RED_POINT_WEIGHTS.items()}
+_MAX_POINT_SCORE = sum(_RED_POINT_WEIGHTS.values())
+
 def _home_score(board: Board) -> float:
-    red_home = sum(1 for i in range(1, 7) if board.points[i] >= 2)
-    white_home = sum(1 for i in range(19, 25) if board.points[i] <= -2)
-    return (red_home - white_home) / 6.0
+    red = sum(w for p, w in _RED_POINT_WEIGHTS.items() if board.points[p] >= 2)
+    white = sum(w for p, w in _WHITE_POINT_WEIGHTS.items() if board.points[p] <= -2)
+    return (red - white) / _MAX_POINT_SCORE
 
 def _hit_threat_score(board: Board) -> float:
     white_blots = [i for i in range(1, 25) if board.points[i] == -1]

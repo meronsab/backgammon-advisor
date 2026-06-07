@@ -1,5 +1,6 @@
-from backgammon.board import Board, generate_moves, apply_move, format_move
+from backgammon.board import Board, generate_moves, apply_move, format_move, opening_board
 from backgammon.evaluator import evaluate
+from backgammon.opening_book import OPENING_BOOK
 
 ALL_DICE_COMBOS = []
 for _d1 in range(1, 7):
@@ -7,6 +8,13 @@ for _d1 in range(1, 7):
         _dice = [_d1, _d2, _d1, _d2] if _d1 == _d2 else [_d1, _d2]
         _prob = (1/36) if _d1 == _d2 else (2/36)
         ALL_DICE_COMBOS.append((_dice, _prob))
+
+_OPENING_POINTS = opening_board().points
+
+def _is_opening(board: Board) -> bool:
+    return (board.points == _OPENING_POINTS and
+            board.red_bar == 0 and board.white_bar == 0 and
+            board.red_off == 0 and board.white_off == 0)
 
 def _score_move(board: Board, move: list, plan: str) -> float:
     new_board = apply_move(board, move, 'red')
@@ -24,6 +32,13 @@ def best_move(board: Board, dice: list, plan: str = 'wise') -> list:
     moves = generate_moves(board, dice, 'red')
     if not moves or moves == [[]]:
         return []
+
+    # Opening book: instant response on move 1
+    if _is_opening(board):
+        key = (dice[0], dice[-1], plan)
+        if key in OPENING_BOOK:
+            return OPENING_BOOK[key]
+
     return max(moves, key=lambda m: _score_move(board, m, plan))
 
 def dice_histogram(board: Board, plan: str = 'wise') -> list:
