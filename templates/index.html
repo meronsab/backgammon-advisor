@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backgammon Advisor</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>Backgammon Advisor</h1>
+  <div class="plan-tabs">
+    <button class="plan-tab" data-plan="bold">⚔️ Bold</button>
+    <button class="plan-tab active" data-plan="wise">🎯 Wise</button>
+    <button class="plan-tab" data-plan="caution">🛡️ Caution</button>
+  </div>
+  <button class="btn" style="background:#333;color:#aaa;margin-left:auto;" id="new-game-btn">New Game</button>
+</header>
+
+<main>
+  <div class="board-section">
+    <div class="point-labels">
+      <span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span>
+      <span class="bar-space"></span>
+      <span>19</span><span>20</span><span>21</span><span>22</span><span>23</span><span>24</span>
+    </div>
+
+    <div class="board-outer">
+      <div class="board-inner">
+        <div class="board-bar">BAR<br><span id="bar-red">0</span>/<span id="bar-white">0</span></div>
+        <div class="points-row top-row" id="top-row"></div>
+        <div class="board-mid">· · · · · · · · · · · ·</div>
+        <div class="points-row bot-row" id="bot-row"></div>
+      </div>
+    </div>
+
+    <div class="point-labels">
+      <span>12</span><span>11</span><span>10</span><span>9</span><span>8</span><span>7</span>
+      <span class="bar-space"></span>
+      <span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span>
+    </div>
+
+    <div class="pip-row">
+      <span>🔴 You · Pip: <b id="pip-red">—</b></span>
+      <span>⚪ Opp · Pip: <b id="pip-white">—</b></span>
+    </div>
+
+    <div class="history" id="history-log"><em style="color:#444">Move history will appear here.</em></div>
+  </div>
+
+  <div class="panel">
+    <div class="card">
+      <div class="card-title">Position Analysis</div>
+      <div class="win-stats">
+        <div class="stat-box"><div class="stat-val green" id="win-pct">—</div><div class="stat-label">Win %</div></div>
+        <div class="stat-box"><div class="stat-val yellow" id="gammon-pct">—</div><div class="stat-label">Gammon %</div></div>
+        <div class="stat-box"><div class="stat-val blue" id="bg-pct">—</div><div class="stat-label">BG %</div></div>
+      </div>
+      <div class="cube-box hold" id="cube-box">
+        <div>
+          <div style="font-size:10px;color:#888;">Doubling cube</div>
+          <div class="cube-action" id="cube-action">—</div>
+        </div>
+        <div class="cube-opp" id="cube-opp"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Your Roll</div>
+      <div class="dice-row">
+        <input class="dice-input" id="die1" type="number" min="1" max="6" placeholder="d1">
+        <input class="dice-input" id="die2" type="number" min="1" max="6" placeholder="d2">
+        <button class="btn get-advice-btn" id="advise-btn">Get Advice</button>
+      </div>
+      <div id="advice-result" style="display:none;margin-top:10px;">
+        <div class="best-move-box">
+          <div class="move-notation" id="best-move-text">—</div>
+          <div class="move-score" id="best-move-score"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-take" id="take-btn">✓ Take Advice</button>
+          <button class="btn btn-override" id="override-btn">✏️ Override</button>
+        </div>
+        <div class="override-input" id="override-box">
+          <input type="text" id="override-input" placeholder="Your move (e.g. 13/8 6/3)">
+          <button class="btn" style="width:100%;margin-top:4px;background:#555;" id="apply-override-btn">Apply Override</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Opponent's Turn</div>
+      <div class="opp-inputs">
+        <input class="opp-dice-input" id="opp-dice" type="text" placeholder="Dice (e.g. 4 2)">
+        <input class="opp-move-input" id="opp-move" type="text" placeholder="Move (e.g. 24/18 13/9)">
+      </div>
+      <button class="btn next-btn" id="opp-apply-btn">Apply & Next Turn →</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">All Dice Outcomes</div>
+      <div id="histogram"><em style="color:#444">Get advice to see outcomes.</em></div>
+    </div>
+  </div>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
