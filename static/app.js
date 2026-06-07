@@ -1,5 +1,22 @@
 let currentPlan = 'wise';
 let pendingAdvicedMove = null;
+let currentBoard = null;
+let highlightedPoints = { from: new Set(), to: new Set() };
+
+function parseMovePoints(moveStr) {
+  const from = [], to = [];
+  if (!moveStr || moveStr === '—') return { from, to };
+  moveStr.split(' ').forEach(part => {
+    const [src, dst] = part.split('/');
+    if (src && src.toLowerCase() !== 'bar') { const p = parseInt(src); if (!isNaN(p)) from.push(p); }
+    if (dst && dst.toLowerCase() !== 'off')  { const p = parseInt(dst); if (!isNaN(p)) to.push(p); }
+  });
+  return { from, to };
+}
+
+function clearHighlights() {
+  highlightedPoints = { from: new Set(), to: new Set() };
+}
 
 document.querySelectorAll('.plan-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -11,6 +28,7 @@ document.querySelectorAll('.plan-tab').forEach(tab => {
 
 document.getElementById('new-game-btn').addEventListener('click', async () => {
   const data = await post('/api/new-game', {});
+  clearHighlights();
   updateBoard(data.board);
   updateAnalysis(data.analysis);
   clearHistory();
@@ -33,11 +51,15 @@ document.getElementById('advise-btn').addEventListener('click', async () => {
   document.getElementById('override-box').classList.remove('visible');
   updateAnalysis(data.analysis);
   renderHistogram(data.histogram);
+  const { from, to } = parseMovePoints(data.best_move);
+  highlightedPoints = { from: new Set(from), to: new Set(to) };
+  if (currentBoard) renderPoints(currentBoard);
 });
 
 document.getElementById('take-btn').addEventListener('click', async () => {
   if (!pendingAdvicedMove || pendingAdvicedMove === '—') return;
   const data = await post('/api/apply-move', { move: pendingAdvicedMove });
+  clearHighlights();
   updateBoard(data.board);
   updateAnalysis(data.analysis);
   addHistoryEntry('you', pendingAdvicedMove);
@@ -53,6 +75,7 @@ document.getElementById('apply-override-btn').addEventListener('click', async ()
   const move = document.getElementById('override-input').value.trim();
   if (!move) return;
   const data = await post('/api/apply-move', { move });
+  clearHighlights();
   updateBoard(data.board);
   updateAnalysis(data.analysis);
   addHistoryEntry('you', move);
@@ -67,6 +90,7 @@ document.getElementById('opp-apply-btn').addEventListener('click', async () => {
   if (!move) return;
   const dice = diceStr.split(/\s+/).map(Number).filter(n => n >= 1 && n <= 6);
   const data = await post('/api/opponent-move', { dice, move });
+  clearHighlights();
   updateBoard(data.board);
   updateAnalysis(data.analysis);
   addHistoryEntry('opp', move, diceStr);
@@ -96,6 +120,7 @@ function updateAnalysis(a) {
 }
 
 function updateBoard(board) {
+  currentBoard = board;
   renderPoints(board);
   document.getElementById('bar-red').textContent = board.red_bar;
   document.getElementById('bar-white').textContent = board.white_bar;
@@ -116,27 +141,44 @@ function renderPoints(board) {
 
   [13,14,15,16,17,18,null,19,20,21,22,23,24].forEach((pt, idx) => {
     if (pt === null) { topRow.appendChild(barSpacer()); return; }
-    topRow.appendChild(makePoint(board.points[pt], idx % 2 === 0 ? 'dark' : 'light'));
+    topRow.appendChild(makePoint(pt, board.points[pt], 'top', idx % 2 === 0 ? 'dark' : 'light'));
   });
 
   [12,11,10,9,8,7,null,6,5,4,3,2,1].forEach((pt, idx) => {
     if (pt === null) { botRow.appendChild(barSpacer()); return; }
-    botRow.appendChild(makePoint(board.points[pt], idx % 2 === 0 ? 'light' : 'dark'));
+    botRow.appendChild(makePoint(pt, board.points[pt], 'bot', idx % 2 === 0 ? 'light' : 'dark'));
   });
 }
 
-function makePoint(count, triClass) {
+function makePoint(pt, count, rowType, triClass) {
+  const hl = highlightedPoints.from.has(pt) ? 'from' : highlightedPoints.to.has(pt) ? 'to' : null;
   const div = document.createElement('div');
-  div.className = 'point';
+  div.className = 'point' + (hl ? ` highlight-${hl}` : '');
   const tri = document.createElement('div');
   tri.className = `point-triangle tri-${triClass}`;
   div.appendChild(tri);
+
+  const n = Math.abs(count);
+  if (n === 0) return div;
   const color = count > 0 ? 'red' : 'white';
-  for (let i = 0; i < Math.abs(count); i++) {
+  const overflow = n > 5;
+  const numCheckers = overflow ? 5 : n;
+
+  const badge = () => {
+    const b = document.createElement('div');
+    b.className = 'checker-badge';
+    b.textContent = n;
+    return b;
+  };
+
+  if (overflow && rowType === 'bot') div.appendChild(badge());
+  for (let i = 0; i < numCheckers; i++) {
     const c = document.createElement('div');
     c.className = `checker ${color}`;
     div.appendChild(c);
   }
+  if (overflow && rowType === 'top') div.appendChild(badge());
+
   return div;
 }
 
